@@ -1,0 +1,178 @@
+#!/usr/bin/perl
+####################################
+##
+## Purpose: A script to display the total number of active and inactive
+##          CPU's, and shut down or spin up individual CPU's
+##
+## Written: 10/14/2014 - Dave Sailors
+##
+## description: Use /proc/cpuinfo to display status of active cpu's and cross check against the online files in
+##              /sys/devices/system/cpu/cpuxx/online where the "xx" is the number of the cpu as listd in /sys/devices/system/cpu.
+##              push either a "0" or a "1" into that file, "0" = offline, "1" means online.
+##
+####################################
+#-----------------------------
+$year=`date +%Y`; chop($year);
+$month=`date +%m`;chop($month);
+$day=`date +%d`;  chop($day);
+$hour=`date +%H`; chop($hour);
+$min=`date +%M`;  chop($min);
+$sec=`date +%S`;  chop($sec);
+$tstamp = "$year.$month.$day.$hour.$min.$sec";
+#-----------------------------
+$PID=$$;
+$host=`hostname`;
+chop($host);
+#-----------------------------
+$cpupath = '/sys/devices/system/cpu';
+#-----------------------------
+$id = `id`;
+@recordi = split(/[" "]+/,$id);
+if ($recordi[0] ne 'uid=0(root)')
+  {
+     print "This script needs to run as root. Please login as root and rerun it\n";
+     print "Your ID is $recordi[0]\n";
+     exit;
+  }
+#-----------------------------
+while (($prompt ne "e") && ($prompt ne "q") && ($prompt ne "E") && ($prompt ne "Q"))
+   {
+
+#-----------------------------
+## - lookup and display
+#-----------------------------
+     @cpu = '';
+     @return = `cat /proc/cpuinfo`;
+     for ($i = 0; $i <= $#return; $i++)
+       {
+         chomp($return[$i]);
+         #print "$i - $return[$i]\n";
+         if (substr($return[$i],0,length("processor")) eq "processor")
+           {
+             #print "-->$return[$i]\n";
+             @record = split(/[" "]+/,$return[$i]);
+             $cpuno = "$record[$#record]";
+             #@print "$cpuno\n";
+             if ($cpuno ne '0')
+               {
+                 $cpustatus = `cat $cpupath/cpu$cpuno/online`;
+               } else { $cpustatus = '1'; }
+             chomp($cpustatus);
+             @cpu[$cpuno] = $cpustatus;
+           }
+       }
+     $lst = `ls -al $cpupath | grep cpu | grep -v cpufreq | grep -v cpuidle | wc -l`;
+     $totCPUs = $lst;
+     for ($d = 0; $d <= $totCPUs-1; $d++)
+       {
+          if ($cpu[$d] eq 0) { $cstat = "off"; }
+          if ($cpu[$d] eq 1) { $cstat = "on"; }
+          if (($cpu[$d] ne 0) && ($cpu[$d] ne 1)) { $cstat = "off"; }
+          print "CPU $d = $cstat\n";
+       }
+     $lastcpu = $totCPUs - 1;
+     print "total CPU's = $totCPUs (0 through $lastcpu)\n";
+
+#-----------------------------
+## - Overall process control
+#-----------------------------
+
+     print "-- enter ------------------------------\n";
+     print "U - To spin up CPU's\n";
+     print "D - To spin down CPU's\n";
+     print "Q - To Quit\n";
+     print "[E to exit] -> ";
+     $prompt = <STDIN>;
+     print "\n";
+     chop($prompt);
+     print "Your Response = $prompt\n";
+     print "\n";
+
+     #-------------------------
+     # - Spin up CPUs
+     #-------------------------
+     if (($prompt eq 'U') || ($prompt eq 'u'))
+       {
+
+         #---- start of range prompting and validation
+         print "Enter the first CPU in the range ->";
+         $prompt1 = <STDIN>;
+         chomp($prompt1);
+         $srange = $prompt1;
+         print "Enter the last CPU in the range ->";
+         $prompt1 = <STDIN>;
+         chomp($prompt1);
+         $erange = $prompt1;
+         if ($srange > $erange)
+           {
+             print "The first CPU in the range must be less than the Last CPU in the range\n";
+             exit;
+           }
+         #---- end of range prompting
+
+         print "Confirm: Turn on CPU $srange through CPU $erange [y or n] ->";
+         $prompt1 = <STDIN>;
+         chomp($prompt1);
+         $yorn = $prompt1;
+         if (($yorn eq 'y') || ($yorn eq 'Y'))
+           {
+             for ($y = $srange; $y <= $erange; $y++)
+               {
+                  $cmd = "echo 1 >$cpupath/cpu$y/online 2>/dev/null";
+                  $rc = system("$cmd");
+                  #print "rc $rc on command $cmd\n";
+               } 
+           } else { print "you entered $yorn\n";print "Confirmed canceled. Nothing done!\n"; print "hit enter ->"; $prompta = <STDIN>;}
+       }
+
+     #-------------------------
+     # - Shut down CPUs
+     #-------------------------
+     if (($prompt eq 'D') || ($prompt eq 'd'))
+       {
+         #---- start of range prompting and validation
+         print "Enter the first CPU in the range ->";
+         $prompt1 = <STDIN>;
+         chomp($prompt1);
+         $srange = $prompt1;
+         if ($srange < 1)
+           {
+             print "Range must be greater than 0, as we can\'t turn off CPU 0\n";
+             exit;
+           }
+         print "Enter the last CPU in the range ->";
+         $prompt1 = <STDIN>;
+         chomp($prompt1);
+         $erange = $prompt1;
+         if ($erange > $lastcpu)
+           {
+             print "Last CPU in the range must be less than or equal to the last available CPU which is $lastcpu \n";
+             exit;
+           }
+         if ($srange > $erange)
+           {
+             print "The first CPU in the range must be less than the Last CPU in the range\n";
+             exit;
+           }
+         #---- end of range prompting
+
+         print "Confirm: Turn off CPU $srange through CPU $erange [y or n] ->";
+         $prompt1 = <STDIN>;
+         chomp($prompt1);
+         $yorn = $prompt1;
+         if (($yorn eq 'y') || ($yorn eq 'Y'))
+           {
+             for ($y = $srange; $y <= $erange; $y++)
+               {
+                  $cmd = "echo 0 >$cpupath/cpu$y/online 2>/dev/null";
+                  $rc = system("$cmd");
+                  print "rc $rc on command $cmd\n";
+               }
+           } else { print "you entered $yorn\n";print "Confirmed canceled. Nothing done!\n";  print "hit enter ->"; $prompta = <STDIN>; }
+
+       }
+#-----------------------------
+## - End of overall process control loop
+#-----------------------------
+   }
+
