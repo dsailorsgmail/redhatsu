@@ -1,0 +1,9 @@
+# - My aliases
+alias lsd='ls -al | grep "^d"'
+alias lsdr='ls -ltr | grep "^d"'
+alias lsr='ls -ltr'
+alias dusk='du -sk * | sort -rn | head -12'
+alias cgi='cd /var/www/cgi-bin;pwd'
+alias html='cd /var/www/html;pwd'
+#
+set -o vi
